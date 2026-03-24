@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from src.helper import download_hugging_face_embeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain_openai import ChatOpenAI
+
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from src.prompt import *
 import os
 
+import requests, json
 
 app = Flask(__name__)
 
@@ -36,7 +37,7 @@ docsearch = PineconeVectorStore.from_existing_index(
 
 retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k":3})
 
-chatModel = ChatOpenAI(model="gpt-4o")
+
 prompt = ChatPromptTemplate.from_messages(
     [
         ("system", system_prompt),
@@ -44,7 +45,7 @@ prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-question_answer_chain = create_stuff_documents_chain(chatModel, prompt)
+question_answer_chain = create_stuff_documents_chain(llm=None, prompt=prompt)
 rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
 
@@ -60,7 +61,20 @@ def chat():
     msg = request.form["msg"]
     input = msg
     print(input)
-    response = rag_chain.invoke({"input": msg})
+    # response = rag_chain.invoke({"input": msg})
+    OPENROUTER_API_KEY = os.environ.get('OPENAI_API_KEY')
+    response = requests.post(
+    url="https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "HTTP-Referer": "http://localhost:5000/", # Optional. Site URL for rankings on openrouter.ai.
+            "X-OpenRouter-Title": "Medical Chatbot", # Optional. Site title for rankings on openrouter.ai.
+        },
+        data=json.dumps({
+            "model": "openai/gpt-3.5-turbo", # Optional
+            "messages": [{"role": "user", "content": msg}]
+        })
+    )
     print("Response : ", response["answer"])
     return str(response["answer"])
 
